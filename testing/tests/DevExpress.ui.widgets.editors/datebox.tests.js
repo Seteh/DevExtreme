@@ -1960,6 +1960,29 @@ QUnit.test("dateBox should not change value when setting to an earlier date than
     assert.deepEqual(this.fixture.dateBox.option("value"), lateDate);
 });
 
+QUnit.test("should execute custom validator while validation state reevaluating", function(assert) {
+    this.reinitFixture({ opened: true });
+
+    const dateBox = this.fixture.dateBox;
+
+    dateBox.$element().dxValidator({
+        validationRules: [{
+            type: "custom",
+            validationCallback: () => false
+        }]
+    });
+
+    const cell = dateBox._popup._wrapper().find(".dx-calendar-cell");
+
+    assert.ok(dateBox.option("isValid"));
+    assert.strictEqual(dateBox.option("text"), "");
+
+    $(cell).trigger("dxclick");
+
+    assert.notOk(dateBox.option("isValid"));
+    assert.notStrictEqual(dateBox.option("text"), "");
+});
+
 QUnit.test("Editor should reevaluate validation state after change text to the current value", function(assert) {
     this.reinitFixture({
         min: new Date(2010, 10, 5),
@@ -2569,6 +2592,18 @@ QUnit.test("date box wrapper adaptivity class depends on the screen size", funct
     } finally {
         stub.restore();
     }
+});
+
+QUnit.test("dateBox with datetime strategy should be rendered once on init", function(assert) {
+    var contentReadyHandler = sinon.spy();
+
+    $("#dateBox").dxDateBox({
+        type: "datetime",
+        pickerType: "calendar",
+        onContentReady: contentReadyHandler
+    }).dxDateBox("instance");
+
+    assert.equal(contentReadyHandler.callCount, 1, "contentReady has been called once");
 });
 
 QUnit.test("date box popup should have maximum 100% width", function(assert) {
