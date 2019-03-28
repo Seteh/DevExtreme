@@ -32,13 +32,15 @@ var $ = require("../../core/renderer"),
     Resizable = require("../resizable"),
     EmptyTemplate = require("../widget/empty_template"),
     Deferred = require("../../core/utils/deferred").Deferred,
-    getSwatchContainer = require("../widget/swatch_container");
+    zIndexPool = require("./z_index"),
+    swatch = require("../widget/swatch_container");
 
 var OVERLAY_CLASS = "dx-overlay",
     OVERLAY_WRAPPER_CLASS = "dx-overlay-wrapper",
     OVERLAY_CONTENT_CLASS = "dx-overlay-content",
     OVERLAY_SHADER_CLASS = "dx-overlay-shader",
     OVERLAY_MODAL_CLASS = "dx-overlay-modal",
+    INNER_OVERLAY_CLASS = "dx-inner-overlay",
     INVISIBLE_STATE_CLASS = "dx-state-invisible",
 
     ANONYMOUS_TEMPLATE_NAME = "content",
@@ -46,8 +48,6 @@ var OVERLAY_CLASS = "dx-overlay",
     RTL_DIRECTION_CLASS = "dx-rtl",
 
     ACTIONS = ["onShowing", "onShown", "onHiding", "onHidden", "onPositioning", "onPositioned", "onResizeStart", "onResize", "onResizeEnd"],
-
-    FIRST_Z_INDEX = 1500,
 
     OVERLAY_STACK = [],
 
@@ -349,6 +349,7 @@ var Overlay = Widget.inherit({
             onResizeStart: null,
             onResize: null,
             onResizeEnd: null,
+            innerOverlay: false,
 
             // NOTE: private options
 
@@ -442,6 +443,7 @@ var Overlay = Widget.inherit({
 
         this._$wrapper = $("<div>").addClass(OVERLAY_WRAPPER_CLASS);
         this._$content = $("<div>").addClass(OVERLAY_CONTENT_CLASS);
+        this._initInnerOverlayClass();
 
         var $element = this.$element();
         this._$wrapper.addClass($element.attr("class"));
@@ -463,6 +465,10 @@ var Overlay = Widget.inherit({
         this._initHideTopOverlayHandler(options.hideTopOverlayHandler);
 
         this.callBase(options);
+    },
+
+    _initInnerOverlayClass: function() {
+        this._$content.toggleClass(INNER_OVERLAY_CLASS, this.option("innerOverlay"));
     },
 
     _initTarget: function(target) {
@@ -545,7 +551,8 @@ var Overlay = Widget.inherit({
 
         var $container = this._$content,
             isAttachedTarget = $(window.document).is(e.target) || domUtils.contains(window.document, e.target),
-            outsideClick = isAttachedTarget && !($container.is(e.target) || domUtils.contains($container.get(0), e.target));
+            isInnerOverlay = $(e.target).closest("." + INNER_OVERLAY_CLASS).length,
+            outsideClick = isAttachedTarget && !isInnerOverlay && !($container.is(e.target) || domUtils.contains($container.get(0), e.target));
 
         if(outsideClick && closeOnOutsideClick) {
             if(this.option("shading")) {
@@ -583,7 +590,7 @@ var Overlay = Widget.inherit({
     },
 
     _zIndexInitValue: function() {
-        return FIRST_Z_INDEX;
+        return Overlay.baseZIndex();
     },
 
     _toggleViewPortSubscription: function(toggle) {
@@ -746,7 +753,7 @@ var Overlay = Widget.inherit({
         if(animation) {
             startCallback = startCallback || animation.start || noop;
 
-            fx.animate(this._getOuterElement(), extend({}, animation, {
+            fx.animate(this._$content, extend({}, animation, {
                 start: startCallback,
                 complete: completeCallback
             }));
@@ -756,7 +763,7 @@ var Overlay = Widget.inherit({
     },
 
     _stopAnimation: function() {
-        fx.stop(this._getOuterElement(), true);
+        fx.stop(this._$content, true);
     },
 
     _renderVisibility: function(visible) {
@@ -800,8 +807,7 @@ var Overlay = Widget.inherit({
 
         if(pushToStack) {
             if(index === -1) {
-                var length = overlayStack.length;
-                this._zIndex = (length ? overlayStack[length - 1]._zIndex : this._zIndexInitValue()) + 1;
+                this._zIndex = zIndexPool.create(this._zIndexInitValue());
 
                 overlayStack.push(this);
             }
@@ -810,6 +816,7 @@ var Overlay = Widget.inherit({
             this._$content.css("zIndex", this._zIndex);
         } else if(index !== -1) {
             overlayStack.splice(index, 1);
+            zIndexPool.remove(this._zIndex);
         }
     },
 
@@ -1156,10 +1163,9 @@ var Overlay = Widget.inherit({
     },
 
     _changePosition: function(offset) {
-        const outerElement = this._getOuterElement();
-        const position = translator.locate(outerElement);
+        var position = translator.locate(this._$content);
 
-        translator.move(outerElement, {
+        translator.move(this._$content, {
             left: position.left + offset.left,
             top: position.top + offset.top
         });
@@ -1201,9 +1207,9 @@ var Overlay = Widget.inherit({
     _attachWrapperToContainer: function() {
         var $element = this.$element();
         var containerDefined = this.option("container") !== undefined;
-        var renderContainer = containerDefined ? this._$container : getSwatchContainer($element);
+        var renderContainer = containerDefined ? this._$container : swatch.getSwatchContainer($element);
 
-        if(renderContainer[0] === $element.parent()[0]) {
+        if(renderContainer && renderContainer[0] === $element.parent()[0]) {
             renderContainer = $element;
         }
 
@@ -1283,30 +1289,10 @@ var Overlay = Widget.inherit({
         return getElement(container || positionOf);
     },
 
-    _getOuterElement() {
-        const $content = this._$content;
-        const content = $content.get(0);
-        const isShading = this.option('shading');
-        const width = this._getOptionValue("width", content);
-        const height = this._getOptionValue("height", content);
-
-        const isPercentage = (size) => String(size).indexOf('%') !== -1;
-
-        const isPercentageWidth = isPercentage(width);
-        const isPercentageHeight = isPercentage(height);
-
-        const areWrapperAndContentSizeSame = !isShading;
-        const doesContentFitWrapper = isPercentageWidth && isPercentageHeight && areWrapperAndContentSizeSame;
-
-        return doesContentFitWrapper ? this._$wrapper : $content;
-    },
-
     _renderDimensions: function() {
-        const $content = this._$content;
-        const content = $content.get(0);
-        const $outerElement = this._getOuterElement();
+        var content = this._$content.get(0);
 
-        $outerElement.css({
+        this._$content.css({
             minWidth: this._getOptionValue("minWidth", content),
             maxWidth: this._getOptionValue("maxWidth", content),
             minHeight: this._getOptionValue("minHeight", content),
@@ -1314,10 +1300,6 @@ var Overlay = Widget.inherit({
             width: this._getOptionValue("width", content),
             height: this._getOptionValue("height", content)
         });
-
-        if($outerElement !== $content) {
-            $content.css({ width: "100%", height: "100%" });
-        }
     },
 
     _renderPosition: function() {
@@ -1329,16 +1311,14 @@ var Overlay = Widget.inherit({
                 left: fitIntoRange(0, -allowedOffsets.left, allowedOffsets.right)
             });
         } else {
-            const $outerElement = this._getOuterElement();
-
             this._renderOverlayBoundaryOffset();
 
-            translator.resetPosition($outerElement);
+            translator.resetPosition(this._$content);
 
             var position = this._transformStringPosition(this._position, POSITION_ALIASES),
-                resultPosition = positionUtils.setup($outerElement, position);
+                resultPosition = positionUtils.setup(this._$content, position);
 
-            forceRepaint($outerElement);
+            forceRepaint(this._$content);
 
             // TODO: hotfix for T338096
             this._actions.onPositioning();
@@ -1432,6 +1412,7 @@ var Overlay = Widget.inherit({
 
         this.callBase();
 
+        zIndexPool.remove(this._zIndex);
         this._$wrapper.remove();
         this._$content.remove();
     },
@@ -1495,6 +1476,9 @@ var Overlay = Widget.inherit({
             case "container":
                 this._initContainer(value);
                 this._invalidate();
+                break;
+            case "innerOverlay":
+                this._initInnerOverlayClass();
                 break;
             case "deferRendering":
             case "contentTemplate":
@@ -1598,7 +1582,7 @@ var Overlay = Widget.inherit({
 * @static
 */
 Overlay.baseZIndex = function(zIndex) {
-    FIRST_Z_INDEX = zIndex;
+    return zIndexPool.base(zIndex);
 };
 
 registerComponent("dxOverlay", Overlay);

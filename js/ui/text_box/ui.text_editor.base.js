@@ -12,7 +12,8 @@ var $ = require("../../core/renderer"),
     eventUtils = require("../../events/utils"),
     pointerEvents = require("../../events/pointer"),
     clickEvent = require("../../events/click"),
-    config = require("../../core/config");
+    config = require("../../core/config"),
+    Deferred = require("../../core/utils/deferred").Deferred;
 
 var TEXTEDITOR_CLASS = "dx-texteditor",
     TEXTEDITOR_INPUT_CLASS = "dx-texteditor-input",
@@ -305,6 +306,10 @@ var TextEditorBase = Editor.inherit({
         return this.$element().find(TEXTEDITOR_INPUT_SELECTOR).first();
     },
 
+    _isFocused: function() {
+        return focused(this._input()) || this.callBase();
+    },
+
     _inputWrapper: function() {
         return this.$element();
     },
@@ -339,7 +344,7 @@ var TextEditorBase = Editor.inherit({
 
         this._renderInput();
         this._renderInputType();
-        this._renderPlaceholderMarkup();
+        this._renderPlaceholder();
 
         this._renderProps();
 
@@ -384,8 +389,8 @@ var TextEditorBase = Editor.inherit({
     },
 
     _renderValue: function() {
-        this._renderInputValue();
-        this._renderInputAddons();
+        var renderInputPromise = this._renderInputValue();
+        renderInputPromise.always(this._renderInputAddons.bind(this));
     },
 
     _renderInputValue: function(value) {
@@ -410,6 +415,8 @@ var TextEditorBase = Editor.inherit({
         } else {
             this._toggleEmptinessEventHandler();
         }
+
+        return new Deferred().resolve();
     },
 
     _renderDisplayText: function(text) {
@@ -497,7 +504,7 @@ var TextEditorBase = Editor.inherit({
 
         var $input = this._input(),
             placeholderText = this.option("placeholder"),
-            $placeholder = this._$placeholder = $('<div>')
+            $placeholder = this._$placeholder = $("<div>")
                 .attr("data-dx_placeholder", placeholderText);
 
         $placeholder.insertAfter($input);
@@ -565,7 +572,7 @@ var TextEditorBase = Editor.inherit({
         this._saveValueChangeEvent(e);
         this.reset();
 
-        !focused($input) && eventsEngine.trigger($input, "focus");
+        !this._isFocused() && eventsEngine.trigger($input, "focus");
         eventsEngine.trigger($input, "input");
     },
 

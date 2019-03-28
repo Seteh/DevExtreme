@@ -381,18 +381,6 @@ module.exports = {
     },
     views: {
         rowsView: columnsView.ColumnsView.inherit((function() {
-            var appendFreeSpaceRowTemplate = {
-                render: function(options) {
-                    var $tbody = options.container.find("tbody");
-
-                    if($tbody.length) {
-                        $tbody.last().append(options.content);
-                    } else {
-                        options.container.append(options.content);
-                    }
-                }
-            };
-
             var defaultCellTemplate = function($container, options) {
                 var isDataTextEmpty = isEmpty(options.text) && options.rowType === "data",
                     text = options.text,
@@ -682,16 +670,22 @@ module.exports = {
                     }
                 },
 
-                _createEmptyRow: function(isFixed) {
+                _createEmptyRow: function(className, isFixed, height) {
                     var that = this,
                         i,
+                        $cell,
                         $row = that._createRow(),
                         columns = isFixed ? this.getFixedColumns() : this.getColumns();
 
-                    $row.toggleClass(COLUMN_LINES_CLASS, that.option("showColumnLines"));
+                    $row
+                        .addClass(className)
+                        .toggleClass(COLUMN_LINES_CLASS, that.option("showColumnLines"));
 
                     for(i = 0; i < columns.length; i++) {
-                        $row.append(that._createCell({ column: columns[i], rowType: "freeSpace", columnIndex: i, columns: columns }));
+                        $cell = that._createCell({ column: columns[i], rowType: "freeSpace", columnIndex: i, columns: columns });
+                        isNumeric(height) && $cell.css("height", height);
+
+                        $row.append($cell);
                     }
 
                     that.setAria("role", "presentation", $row);
@@ -699,10 +693,23 @@ module.exports = {
                     return $row;
                 },
 
-                _renderFreeSpaceRow: function(tableElement, options) {
-                    var freeSpaceRowElement = this._createEmptyRow().addClass(FREE_SPACE_CLASS);
+                _appendEmptyRow: function($table, $emptyRow, location) {
+                    var $tBodies = this._getBodies($table),
+                        $container = $tBodies.length && !$emptyRow.is("tbody") ? $tBodies : $table;
 
-                    this._appendRow(tableElement, freeSpaceRowElement, appendFreeSpaceRowTemplate);
+                    if(location === "top") {
+                        $container.first().prepend($emptyRow);
+                    } else {
+                        $container.last().append($emptyRow);
+                    }
+                },
+
+                _renderFreeSpaceRow: function($tableElement) {
+                    var $freeSpaceRowElement = this._createEmptyRow(FREE_SPACE_CLASS);
+
+                    $freeSpaceRowElement = this._wrapRowIfNeed($tableElement, $freeSpaceRowElement);
+
+                    this._appendEmptyRow($tableElement, $freeSpaceRowElement);
                 },
 
                 _checkRowKeys: function(options) {

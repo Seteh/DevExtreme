@@ -25,12 +25,14 @@ import hogan from "../../../node_modules/hogan.js/dist/hogan-3.0.2.js";
 window.Hogan = hogan;
 
 import $ from "jquery";
+import browser from "core/utils/browser";
 import devices from "core/devices";
 import setTemplateEngine from "ui/set_template_engine";
 import nativePointerMock from "../../helpers/nativePointerMock.js";
 import { setupDataGridModules, MockDataController, MockColumnsController } from "../../helpers/dataGridMocks.js";
 import gridCoreUtils from "ui/grid_core/ui.grid_core.utils";
 import dataUtils from "core/element_data";
+import translator from "animation/translator";
 
 var device = devices.real(),
     expandCellTemplate = gridCoreUtils.getExpandCellTemplate();
@@ -1941,8 +1943,43 @@ QUnit.testInActiveWindow("Scrolling to focused cell when it is fixed", function(
     that.rowsView.scrollChanged.add(scrollChanged);
     // act
     that.keyboardNavigationController.focus($cell);
-
 });
+
+if(browser.mozilla) {
+    QUnit.testInActiveWindow("Scrolling should performs with delay if FF and columnFixing.enabled", function(assert) {
+        // arrange
+        var that = this,
+            $cell,
+            $fixedTable,
+            done = assert.async(),
+            $testElement = $("#container");
+
+        that.clock.restore();
+        that.items = generateData(20);
+        that.options.scrolling = {
+            pushBackValue: 0 // for ios devices
+        };
+        that.setupDataGrid();
+        that.rowsView.render($testElement);
+        that.rowsView.height(100);
+        that.rowsView.resize();
+
+        $fixedTable = $testElement.find(".dx-datagrid-rowsview").children(".dx-datagrid-content-fixed").find("table");
+        $cell = $fixedTable.find("tbody > tr:not(.dx-freespace-row)").last().children().first();
+
+        var dateStart = new Date(),
+            scrollChanged = function(e) {
+                that.rowsView.scrollChanged.remove(scrollChanged);
+                assert.ok(new Date() - dateStart >= 60, "scrolling has delay");
+                done();
+            };
+
+        that.rowsView.scrollChanged.add(scrollChanged);
+
+        // act
+        that.keyboardNavigationController.focus($cell);
+    });
+}
 
 QUnit.test("getFixedColumnElements", function(assert) {
     // arrange
@@ -1998,6 +2035,43 @@ QUnit.test("Updating position of the fixed table (when scrollbar at the bottom) 
         assert.ok($fixedTable.position().top !== positionTop, "scroll top of the fixed table is changed");
         done();
     });
+});
+
+// T722330
+QUnit.test("Elastic scrolling should be applied for fixed table", function(assert) {
+    // arrange
+    var that = this,
+        $fixedTable,
+        $testElement = $("#container");
+
+    that.setupDataGrid();
+    that.rowsView.render($testElement);
+    that.rowsView.resize();
+    that.rowsView.height(50);
+
+    // act
+    that.rowsView._handleScroll({
+        component: that.rowsView.getScrollable(),
+        scrollOffset: {
+            top: 350
+        },
+        reachedBottom: true
+    });
+
+    // assert
+    $fixedTable = $testElement.find(".dx-datagrid-rowsview").children(".dx-datagrid-content-fixed").find("table");
+    assert.roughEqual(translator.getTranslate($fixedTable).y, -330, 10);
+
+    // act
+    that.rowsView._handleScroll({
+        component: that.rowsView.getScrollable(),
+        scrollOffset: {
+            top: 10
+        }
+    });
+
+    // assert
+    assert.ok(!$fixedTable[0].style.transform);
 });
 
 QUnit.module("Headers reordering and resizing with fixed columns", {

@@ -38,10 +38,11 @@ import support from "core/utils/support";
 import browser from "core/utils/browser";
 import pointerMock from "../../helpers/pointerMock.js";
 import nativePointerMock from "../../helpers/nativePointerMock.js";
-import { setupDataGridModules, MockDataController, MockColumnsController, MockSelectionController, getCells } from "../../helpers/dataGridMocks.js";
+import { setupDataGridModules, MockDataController, MockColumnsController, MockSelectionController, getCells, generateItems } from "../../helpers/dataGridMocks.js";
 import numberLocalization from "localization/number";
 import virtualScrollingCore from "ui/grid_core/ui.grid_core.virtual_scrolling_core";
 import ODataStore from "data/odata/store";
+import ArrayStore from "data/array_store";
 
 var expandCellTemplate = gridCoreUtils.getExpandCellTemplate();
 
@@ -5086,6 +5087,39 @@ QUnit.test("Show master detail with rowTemplate", function(assert) {
     assert.equal($rowElements.eq(1).find(".test-detail").length, 1, "master detail template is rendered");
 });
 
+// T718316
+QUnit.test("Show master detail when row as tbody", function(assert) {
+    // arrange
+    var $testElement = $("#container"),
+        $rowElements;
+
+    this.options.masterDetail = {
+        enabled: true,
+        template: function(container, options) {
+            $("<div>").addClass("test-detail").text(options.key).appendTo(container);
+        }
+    };
+    this.options.rowTemplate = function(container, options) {
+        $("<tbody class=\"dx-row dx-data-row\"><tr><td>+</td><td>" + options.data.name + "</td><td>" + options.data.age + "</td></tr></tbody>").appendTo(container);
+    };
+
+    this.setupDataGridModules();
+    this.rowsView.render($testElement);
+
+    // assert
+    $rowElements = $testElement.find("tbody.dx-row");
+    assert.strictEqual($rowElements.length, 8, "row count");
+
+    // act
+    this.expandRow(this.getKeyByRowIndex(0));
+
+    // assert
+    $rowElements = $testElement.find("tbody.dx-row");
+    assert.strictEqual($rowElements.length, 9, "row count");
+    assert.ok($rowElements.eq(0).hasClass("dx-data-row"), "data row");
+    assert.ok($rowElements.eq(1).hasClass("dx-master-detail-row"), "master detail row");
+});
+
 QUnit.test('Do not hide noData block placed inside the masterDetail template', function(assert) {
     // arrange
     var container = $('#container'),
@@ -5251,6 +5285,62 @@ QUnit.test("Group row with the custom position of the group cell", function(asse
     assert.ok($groupCellElements.eq(2).hasClass("dx-group-cell"), "third cell is group");
 });
 
+// T712541
+QUnit.test("Rows should be rendered properly on scrolling when virtual scrolling is enabled and a row template is used", function(assert) {
+    // arrange
+    var scrollable,
+        clock = sinon.useFakeTimers(),
+        $testElement = $('#container'),
+        store = new ArrayStore(generateItems(10000));
+
+    try {
+        this.options.columns = undefined;
+        this.options.remoteOperations = true;
+        this.options.dataSource = {
+            load: function(loadOptions) {
+                var d = $.Deferred();
+
+                setTimeout(() => {
+                    store.load(loadOptions).done((items) => {
+                        d.resolve({ data: items, totalCount: 10000 });
+                    });
+                }, 100);
+
+                return d.promise();
+            }
+        };
+        this.options.scrolling = {
+            mode: "virtual",
+            useNative: false,
+            removeInvisiblePages: true,
+            rowPageSize: 5,
+            rowRenderingMode: "standard"
+        };
+        this.options.rowTemplate = (_, options) => {
+            return $("<tbody>").addClass("dx-row").html("<tr><td colspan=5>" + options.data.id + "</td></tr>");
+        };
+
+        this.setupDataGridModules();
+        clock.tick(200);
+
+        this.rowsView.render($testElement);
+        this.rowsView.height(200);
+        this.rowsView.resize();
+
+        scrollable = this.rowsView._scrollable;
+        scrollable.scrollTo({ y: 2500 });
+        $(scrollable._container()).trigger("scroll");
+        clock.tick(500);
+
+        // assert
+        assert.strictEqual(this.pageIndex(), 3, "current pageIndex");
+        assert.strictEqual($testElement.find("tbody.dx-virtual-row").length, 2, "virtual tbody count");
+        assert.strictEqual($testElement.find("tbody").children(".dx-virtual-row").length, 2, "virtual row count");
+    } finally {
+        clock.restore();
+    }
+});
+
 
 QUnit.module('Virtual scrolling', {
     beforeEach: function() {
@@ -5299,7 +5389,8 @@ QUnit.test('Render rows with virtual items', function(assert) {
         },
         dataController = new MockDataController(options),
         rowsView = this.createRowsView(options.items, dataController),
-        testElement = $('#container');
+        testElement = $('#container'),
+        $virtualRows;
 
     // act
     this.options.scrolling = {
@@ -5319,9 +5410,15 @@ QUnit.test('Render rows with virtual items', function(assert) {
     assert.equal(content.children().length, 1);
     assert.equal(content.children().eq(0)[0].tagName, 'TABLE');
     assert.equal(content.children().eq(0).find('tbody > tr').length, 6, '3 data row + 1 freespace row + 2 virtual row');
-    assert.roughEqual(content.children().eq(0).find(".dx-virtual-row").eq(0).height(), rowHeight * 10, 1);
-    assert.roughEqual(content.children().eq(0).find(".dx-virtual-row").eq(1).height(), rowHeight * 7, 1);
+
+    $virtualRows = content.children().eq(0).find(".dx-virtual-row");
+    assert.roughEqual($virtualRows.eq(0).height(), rowHeight * 10, 1);
+    assert.roughEqual($virtualRows.eq(1).height(), rowHeight * 7, 1);
     assert.equal(content.children().eq(1).find("." + "dx-datagrid-group-space").length, 0, "group space class");
+
+    // T720928
+    assert.roughEqual(parseFloat($virtualRows.eq(0).children().get(0).style.height), rowHeight * 10, 1);
+    assert.roughEqual(parseFloat($virtualRows.eq(1).children().get(0).style.height), rowHeight * 7, 1);
 });
 
 QUnit.test('Render rows if row rendering mode is virtual', function(assert) {

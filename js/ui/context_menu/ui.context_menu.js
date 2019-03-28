@@ -568,6 +568,7 @@ var ContextMenu = MenuBase.inherit((function() {
                 overlayOptions = {
                     focusStateEnabled: this.option("focusStateEnabled"),
                     animation: overlayAnimation,
+                    innerOverlay: true,
                     closeOnOutsideClick: this._closeOnOutsideClickHandler.bind(this),
                     propagateOutsideClick: true,
                     closeOnTargetScroll: true,
@@ -906,7 +907,6 @@ var ContextMenu = MenuBase.inherit((function() {
                     break;
                 case "target":
                     args.previousValue && this._detachShowContextMenuEvents(args.previousValue);
-                    this.option("position").of = null;
                     this._invalidate();
                     break;
                 case "closeOnOutsideClick":
