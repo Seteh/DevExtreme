@@ -6463,6 +6463,33 @@ QUnit.test("Horizontal scroll should not exist if master-detail contains the sim
     assert.equal($(scrollable.content()).width(), $(scrollable._container()).width(), "no scroll");
 });
 
+// T728069
+QUnit.test("Horizontal scroll should not exist if fixed column with custom buttons exists", function(assert) {
+    // arrange, act
+    var dataGrid = createDataGrid({
+        width: 600,
+        dataSource: [{}],
+        loadingTimeout: undefined,
+        columnAutoWidth: true,
+        columns: ["field1", "field2", {
+            type: "buttons",
+            fixed: true,
+            buttons: [
+                { icon: "repeat" },
+                { icon: "repeat" },
+                { icon: "repeat" },
+                { icon: "repeat" },
+                { icon: "repeat" },
+                { icon: "repeat" }
+            ]
+        }]
+    });
+
+    // assert
+    var scrollable = dataGrid.getScrollable();
+    assert.roughEqual($(scrollable.content()).width(), $(scrollable._container()).width(), 1.01, "no scroll");
+});
+
 if(browser.msie && parseInt(browser.version) <= 11) {
     QUnit.test("Update the scrollable for IE browsers when the adaptive column is hidden", function(assert) {
         // arrange
@@ -13127,6 +13154,41 @@ QUnit.test("Filtering on load when virtual scrolling", function(assert) {
     assert.equal(items.length, 1, "1 item in dataSource");
     assert.equal(items[0].firstName, "name_5", "filtered row 'firstName' field value");
     assert.equal(items[0].lastName, "lastName_5", "filtered row 'lastName' field value");
+});
+
+QUnit.test("DataGrid should not paginate to the already loaded page if it is not in the viewport and it's row was focused (T726994)", function(assert) {
+    // arrange
+    var generateDataSource = function(count) {
+            var result = [], i;
+            for(i = 0; i < count; ++i) {
+                result.push({ firstName: "name_" + i, lastName: "lastName_" + i });
+            }
+            return result;
+        },
+        dataGrid = createDataGrid({
+            loadingTimeout: undefined,
+            height: 200,
+            dataSource: generateDataSource(100),
+            keyExpr: "firstName",
+            focusedRowEnabled: true,
+            scrolling: {
+                mode: "virtual"
+            },
+            paging: {
+                pageSize: 4,
+                pageIndex: 2
+            },
+            columns: ["firstName", "lastName"]
+        });
+
+    // act
+    let visibleRow0 = dataGrid.getController("data").getVisibleRows()[0];
+    let $row = $(dataGrid.getRowElement(4));
+    let $cell = $row.find("td").eq(0);
+    $cell.trigger("dxpointerdown");
+
+    // assert
+    assert.deepEqual(visibleRow0.key, dataGrid.getController("data").getVisibleRows()[0].key, "Compare first visible row");
 });
 
 // T558189

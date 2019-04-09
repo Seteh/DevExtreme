@@ -51,7 +51,7 @@ exports.FocusController = core.ViewController.inherit((function() {
             let dataController = this.getController("data"),
                 isVirtualScrolling = this.getController("keyboardNavigation")._isVirtualScrolling(),
                 pageIndex = Math.floor(index / dataController.pageSize()),
-                visibleRowsCount = dataController.getVisibleRows().length,
+                visibleRowsCount = dataController.getVisibleRows().length + dataController.getRowIndexOffset(),
                 visiblePagesCount = Math.ceil(visibleRowsCount / dataController.pageSize()),
                 isLocalIndex = !isVirtualScrolling || visiblePagesCount > pageIndex,
                 setKeyByIndex = () => {
@@ -208,12 +208,15 @@ exports.FocusController = core.ViewController.inherit((function() {
                 $focusedRow,
                 $tableElement;
 
-            each(rowsView.getTableElements(), function(_, element) {
+            each(rowsView.getTableElements(), function(index, element) {
                 $tableElement = $(element);
                 that._clearPreviousFocusedRow($tableElement, focusedRowIndex);
                 if(focusedRowIndex >= 0) {
+                    let isMainTable = index === 0;
                     $focusedRow = that._prepareFocusedRow(change.items[focusedRowIndex], $tableElement, focusedRowIndex);
-                    that.getController("keyboardNavigation")._fireFocusedRowChanged($focusedRow);
+                    if(isMainTable) {
+                        that.getController("keyboardNavigation")._fireFocusedRowChanged($focusedRow);
+                    }
                 }
             });
         },
